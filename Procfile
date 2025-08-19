@@ -1,1 +1,1 @@
-web: gunicorn qa_backend:app
+web: gunicorn app:app
