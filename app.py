@@ -4,15 +4,18 @@ import re
 import json
 from flask_cors import CORS
 from openai import OpenAI
+import os
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Flutter
 
-# ✅ Set OpenAI API key here
-import os
+# ✅ OpenAI API key
 openai_api_key = os.environ.get("OPENAI_API_KEY")
 if not openai_api_key:
     raise ValueError("OPENAI_API_KEY is not set in environment variables")
+
+# ✅ Proxy URL for YouTubeTranscriptApi (e.g., "http://user:pass@proxyserver:port")
+proxy_url = os.environ.get("PROXY_URL")
 
 # Initialize OpenAI client
 client = OpenAI(api_key=openai_api_key)
@@ -71,15 +74,24 @@ def generate_qa():
         if not video_id:
             return jsonify({'error': 'Invalid YouTube URL format'}), 400
 
-        # Get transcript
+        # ✅ Get transcript with optional proxy
         try:
-            ytt = YouTubeTranscriptApi()
-            transcript = ytt.fetch(video_id, languages=['en', 'bn', 'hi'])
+            if proxy_url:
+                transcript = YouTubeTranscriptApi.get_transcript(
+                    video_id,
+                    languages=['en', 'bn', 'hi'],
+                    proxies={"https": proxy_url, "http": proxy_url}
+                )
+            else:
+                transcript = YouTubeTranscriptApi.get_transcript(
+                    video_id,
+                    languages=['en', 'bn', 'hi']
+                )
 
         except Exception as e:
             return jsonify({'error': f"Could not fetch transcript: {str(e)}"}), 500
 
-        full_text = " ".join([entry.text for entry in transcript])
+        full_text = " ".join([entry["text"] for entry in transcript])
 
         if len(full_text.strip()) < 100:
             return jsonify({'error': 'Transcript too short to generate meaningful questions'}), 400
@@ -87,7 +99,7 @@ def generate_qa():
         chunks = chunk_text(full_text)
         text_to_process = chunks[0]
 
-        # Prompt to OpenAI
+        # ✅ Prompt to OpenAI
         prompt = f"""Based on the following transcript, generate exactly {count} educational question-answer pairs in JSON format.
 
 Requirements:
@@ -105,7 +117,6 @@ Format:
 Transcript:
 {text_to_process}"""
 
-        # New OpenAI API call style
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -121,7 +132,7 @@ Transcript:
         try:
             json_result = json.loads(result)
             if isinstance(json_result, list):
-                return jsonify({'result': result, 'count': len(json_result)})
+                return jsonify({'result': json_result, 'count': len(json_result)})
             else:
                 return jsonify({'error': 'Invalid response format from AI'}), 500
         except json.JSONDecodeError:
@@ -132,7 +143,11 @@ Transcript:
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    return jsonify({'status': 'Server is running', 'openai_configured': bool(openai_api_key)})
+    return jsonify({
+        'status': 'Server is running',
+        'openai_configured': bool(openai_api_key),
+        'proxy_enabled': bool(proxy_url)
+    })
 
 if __name__ == '__main__':
     if not openai_api_key:
