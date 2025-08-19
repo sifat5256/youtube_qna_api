@@ -14,7 +14,7 @@ openai_api_key = os.environ.get("OPENAI_API_KEY")
 if not openai_api_key:
     raise ValueError("OPENAI_API_KEY is not set in environment variables")
 
-# ✅ Proxy URL for YouTubeTranscriptApi (e.g., "http://user:pass@proxyserver:port")
+# ✅ Proxy URL for YouTubeTranscriptApi (optional)
 proxy_url = os.environ.get("PROXY_URL")
 
 # Initialize OpenAI client
@@ -36,15 +36,12 @@ def get_video_id(url):
 # Split long transcript into chunks
 def chunk_text(text, max_chunk_size=3000):
     words = text.split()
-    chunks = []
-    current_chunk = []
-    current_size = 0
+    chunks, current_chunk, current_size = [], [], 0
 
     for word in words:
         if current_size + len(word) > max_chunk_size and current_chunk:
             chunks.append(" ".join(current_chunk))
-            current_chunk = [word]
-            current_size = len(word)
+            current_chunk, current_size = [word], len(word)
         else:
             current_chunk.append(word)
             current_size += len(word) + 1
@@ -66,7 +63,6 @@ def generate_qa():
 
         if not url:
             return jsonify({'error': 'YouTube URL is required'}), 400
-
         if count < 1 or count > 50:
             return jsonify({'error': 'Question count must be between 1 and 50'}), 400
 
@@ -76,23 +72,15 @@ def generate_qa():
 
         # ✅ Get transcript with optional proxy
         try:
-            if proxy_url:
-                transcript = YouTubeTranscriptApi.get_transcript(
-                    video_id,
-                    languages=['en', 'bn', 'hi'],
-                    proxies={"https": proxy_url, "http": proxy_url}
-                )
-            else:
-                transcript = YouTubeTranscriptApi.get_transcript(
-                    video_id,
-                    languages=['en', 'bn', 'hi']
-                )
-
+            transcript = YouTubeTranscriptApi.get_transcript(
+                video_id,
+                languages=['en', 'bn', 'hi'],
+                proxies={"https": proxy_url, "http": proxy_url} if proxy_url else None
+            )
         except Exception as e:
             return jsonify({'error': f"Could not fetch transcript: {str(e)}"}), 500
 
         full_text = " ".join([entry["text"] for entry in transcript])
-
         if len(full_text.strip()) < 100:
             return jsonify({'error': 'Transcript too short to generate meaningful questions'}), 400
 
