@@ -70,13 +70,14 @@ def generate_qa():
         if not video_id:
             return jsonify({'error': 'Invalid YouTube URL format'}), 400
 
-        # ✅ Get transcript with optional proxy
+        # ✅ Get transcript (with optional proxy)
         try:
-            transcript = YouTubeTranscriptApi.get_transcript(
-                video_id,
-                languages=['en', 'bn', 'hi'],
-                proxies={"https": proxy_url, "http": proxy_url} if proxy_url else None
-            )
+            kwargs = {"languages": ['en', 'bn', 'hi']}
+            if proxy_url:
+                kwargs["proxies"] = {"https": proxy_url, "http": proxy_url}
+
+            transcript = YouTubeTranscriptApi.get_transcript(video_id, **kwargs)
+
         except Exception as e:
             return jsonify({'error': f"Could not fetch transcript: {str(e)}"}), 500
 
